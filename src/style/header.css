@@ -12,8 +12,13 @@
     width: 100% !important;
     max-width: 100vw !important;
     min-width: 0 !important;
-    z-index: 1 !important;
     overflow: hidden !important;
+}
+
+/* 顶栏弹窗激活时提升外框层级，确保高于底部菜单遮罩(#menu-overlay, z-index:2)与下方卡片 */
+.bili-header:has(.v-popover[show]),
+.bili-header:has(.v-popover[display]) {
+    z-index: 1000 !important;
 }
 
 /* 首页顶栏内容条移出视口并防击穿 */
@@ -141,6 +146,7 @@ div.bili-header .v-popover {
     opacity: 0;
     transition: .4s ease-in;
     display: none;
+    z-index: 1000 !important;
     
     top: 50vh !important;
     transform: translate(-50%, -50%) scale(.9);
@@ -170,7 +176,7 @@ div.bili-header .v-popover[show] {
 /* 分类视图 */
 #copy-category-dialog.v-popover {
     display: none;
-    z-index: 2;
+    z-index: 1000;
     width: 80%;
     max-width: 300px;
 }
