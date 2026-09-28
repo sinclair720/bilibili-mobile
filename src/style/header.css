@@ -5,28 +5,35 @@
 /* 顶栏外框: translate 会生成新的堆叠上下文，导致 position:fixed 的消息数不可显示 */
 #biliMainHeader,
 #bili-header-container,
-#home_nav {
-    position: fixed;
-    width: 100%;
-    z-index: 62;
+#home_nav,
+.bili-header,
+.bili-header--mini,
+.bili-header--large,
+.bili-header--fixed {
+    position: fixed !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    z-index: 62 !important;
     top: -64px !important;
+    overflow-x: hidden !important;
+}
+
+/* 顶栏内容条跟随外框移出屏幕，并阻断 1100px 视口击穿 */
+.bili-header__bar,
+.bili-header__menu,
+.bili-header__channel {
+    position: absolute !important;
+    top: 0 !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
 }
 
 /* 搜索页顶栏外框 */
 #bili-header-container {
     background: unset !important;
-}
-
-/* 首页顶栏偏移 */
-.large-header .bili-header__bar {
-    top: -64px !important;
-    /* 首页顶栏防滚动(避免搜索页异常) */
-    position: fixed !important;
-}
-
-/* 视频搜索页顶栏内容跟随外框移出屏幕 */
-.fixed-header .bili-header__bar {
-    position: absolute !important;
 }
 
 /* 消息页顶部阴影 */

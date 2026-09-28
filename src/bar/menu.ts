@@ -22,21 +22,33 @@ export function setMenuBtn() {
     '.header-avatar-wrap',
   ]
 
+  function querySafe(selector: string): Element | null {
+    try {
+      return document.querySelector(selector)
+    } catch {
+      return null
+    }
+  }
+
   function preload() {
     const preloadeditems = isOldApp ? preloadeditems1 : preloadeditems2
     preloadeditems.forEach((item) => {
-      document.querySelector(item)?.dispatchEvent(new MouseEvent('mouseenter'))
+      const el = querySafe(item)
+      if (el) {
+        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      }
     })
-    setTimeout(handleHistoryShowMore, 70)
-    setTimeout(handleDynamicShowMore, 60)
+    setTimeout(handleHistoryShowMore, 150)
+    setTimeout(handleDynamicShowMore, 150)
   }
 
   tryPreload()
   function tryPreload(retry = 20) {
     if (
-      document.querySelector(preloadeditems1[0]) && // 排除登录、主页
-      document.querySelector(preloadeditems1[1]) &&
-      document.querySelector(preloadeditems1[2])
+      querySafe(preloadeditems1[0]) && // 排除登录、主页
+      querySafe(preloadeditems1[1]) &&
+      querySafe(preloadeditems1[2])
     ) {
       isOldApp = true
       preload()
@@ -70,10 +82,10 @@ export function setMenuBtn() {
         }
       }
     } else if (
-      document.querySelector(preloadeditems2[0]) && // 排除登录、主页
-      document.querySelector(preloadeditems2[1]) &&
-      document.querySelector(preloadeditems2[2]) &&
-      document.querySelector(preloadeditems2[3])
+      (querySafe(preloadeditems2[0]) || document.querySelector('[data-idx=message]')) && // 排除登录、主页
+      (querySafe(preloadeditems2[1]) || document.querySelector('[data-idx=dynamic]')) &&
+      (querySafe(preloadeditems2[2]) || document.querySelector('[data-idx=fav]')) &&
+      (querySafe(preloadeditems2[3]) || document.querySelector('[data-idx=history]'))
     ) {
       isOldApp = false
       preload()
@@ -129,11 +141,77 @@ export function setMenuBtn() {
     update('dynamic-badge', dynamicNum)
   }
 
+  function findPopoverElement(refer: string): HTMLElement | null {
+    // 1. 尝试紧邻兄弟节点
+    let popover = querySafe(`${refer}+.v-popover`) as HTMLElement | null
+    if (popover) return popover
+
+    // 2. 尝试通用兄弟节点 (解决红点/气泡等中间节点插入导致的紧邻失配)
+    popover = querySafe(`${refer}~.v-popover`) as HTMLElement | null
+    if (popover) return popover
+
+    // 3. 尝试向父级容器查找
+    const trigger = querySafe(refer)
+    if (trigger) {
+      const wrap = trigger.closest(
+        '.v-popover-wrap, .right-entry__item, .header-avatar-wrap, .header-avatar-unlogin-wrap',
+      )
+      if (wrap) {
+        popover = wrap.querySelector('.v-popover') as HTMLElement | null
+        if (popover) return popover
+      }
+    }
+
+    // 4. 头像/主页专项兜底 (兼容未登录与已登录不同结构)
+    if (refer.includes('header-avatar')) {
+      popover = document.querySelector(
+        '.header-avatar-wrap .v-popover, .header-avatar-unlogin-wrap .v-popover, .header-avatar-unlogin-inner+.v-popover',
+      ) as HTMLElement | null
+      if (popover) return popover
+    }
+
+    return null
+  }
+
+  async function ensurePopoverLoaded(
+    refer: string,
+  ): Promise<HTMLElement | null> {
+    let popover = findPopoverElement(refer)
+    if (popover) return popover
+
+    // 寻找触发器节点派发 hover 事件唤醒 Vue 异步组件
+    let trigger = querySafe(refer) as HTMLElement | null
+    if (!trigger && refer.includes('header-avatar')) {
+      trigger = document.querySelector(
+        '.header-avatar-wrap, .header-avatar-unlogin-inner, .header-entry-avatar, .header-avatar-unlogin-wrap',
+      ) as HTMLElement | null
+    }
+
+    if (trigger) {
+      const eventInit = { bubbles: true, cancelable: true }
+      trigger.dispatchEvent(new MouseEvent('mouseenter', eventInit))
+      trigger.dispatchEvent(new MouseEvent('mouseover', eventInit))
+      trigger.parentElement?.dispatchEvent(
+        new MouseEvent('mouseenter', eventInit),
+      )
+
+      // 轮询等待挂载 (50ms x 5)
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        popover = findPopoverElement(refer)
+        if (popover) return popover
+      }
+    }
+
+    return null
+  }
+
   let openedDialog = '' // sessionStorage 刷新网页不变
+  let openedPopover: HTMLElement | null = null
 
   const items = menuOverlay.querySelectorAll('li')
   items.forEach((item) =>
-    item.addEventListener('click', (event) => {
+    item.addEventListener('click', async (event) => {
       event.stopPropagation()
       menu.classList.remove('show')
 
@@ -145,7 +223,7 @@ export function setMenuBtn() {
         return
       }
 
-      const referElement = document.querySelector(`${refer}+.v-popover`)
+      const referElement = await ensurePopoverLoaded(refer)
       if (!referElement) {
         const toast = document.querySelector('#toast') as HTMLElement
         toast.textContent = '网页菜单加载中，请稍后重试'
@@ -171,6 +249,13 @@ export function setMenuBtn() {
       }
 
       openedDialog = refer
+      openedPopover = referElement
+
+      if (refer.includes('dynamic')) {
+        handleDynamicShowMore()
+      } else if (refer.includes('history')) {
+        handleHistoryShowMore()
+      }
 
       referElement.setAttribute('display', '')
       setTimeout(() => {
@@ -185,26 +270,32 @@ export function setMenuBtn() {
     menuOverlay.classList.remove('show')
     menuFab.classList.remove('active')
 
-    if (openedDialog === '') {
+    if (!openedPopover && openedDialog === '') {
       return
     }
 
-    const referElement = document.querySelector(
-      `${openedDialog}+.v-popover`,
-    ) as HTMLElement
-    referElement.removeAttribute('show')
+    const referElement =
+      openedPopover || (findPopoverElement(openedDialog) as HTMLElement | null)
+    if (referElement) {
+      referElement.removeAttribute('show')
 
-    handleTransitionEndOnce(referElement, 'opacity', () => {
-      referElement.removeAttribute('display')
-    })
+      handleTransitionEndOnce(referElement, 'opacity', () => {
+        referElement.removeAttribute('display')
+      })
+    }
 
     if (
       openedDialog ===
         ".right-entry__outside[href='//message.bilibili.com']" ||
-      openedDialog === ".right-entry__outside[href='//t.bilibili.com/']"
+      openedDialog === ".right-entry__outside[href='//t.bilibili.com/']" ||
+      openedDialog === '[data-idx=message]' ||
+      openedDialog === '[data-idx=dynamic]'
     ) {
       updateBadges()
     }
+
+    openedDialog = ''
+    openedPopover = null
   })
 
   function handleTouchMove() {
